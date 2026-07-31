@@ -127,6 +127,7 @@ class BPETokenizer:
             return []
         cached = self.cache.get(token_bytes)
         if cached is not None:
+            # Keep frequently reused byte sequences hot in the LRU cache.
             self.cache.move_to_end(token_bytes)
             return list(cached)
 
