@@ -38,3 +38,23 @@ class SwiGLU(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.w2(silu(self.w1(x)) * self.w3(x))
+
+
+class SiLUFeedForward(nn.Module):
+    """Two-matrix SiLU feed-forward network used by the assignment ablation."""
+
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        if d_ff <= 0:
+            raise ValueError("d_ff must be positive")
+        self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.w2(silu(self.w1(x)))

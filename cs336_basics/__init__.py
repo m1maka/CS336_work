@@ -5,7 +5,7 @@ from .embedding import Embedding
 from .linear import Linear
 from .rmsnorm import RMSNorm
 from .rope import RotaryPositionalEmbedding
-from .swiglu import SwiGLU, silu
+from .swiglu import SiLUFeedForward, SwiGLU, silu
 from .transformer_block import TransformerBlock
 from .transformer_lm import TransformerLM
 
@@ -20,6 +20,7 @@ __all__ = [
     "MultiHeadSelfAttention",
     "RMSNorm",
     "RotaryPositionalEmbedding",
+    "SiLUFeedForward",
     "SwiGLU",
     "TransformerBlock",
     "TransformerLM",

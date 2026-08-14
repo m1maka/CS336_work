@@ -30,7 +30,9 @@ class BPETokenizer:
         self.special_tokens = list(dict.fromkeys(special_tokens or []))
         if "" in self.special_tokens:
             raise ValueError("A special token cannot be the empty string.")
-        self.special_tokens_sorted = sorted(self.special_tokens, key=len, reverse=True)
+        self.special_tokens_sorted: list[str] = sorted(
+            self.special_tokens, key=lambda token: len(token), reverse=True
+        )
         self.special_token_to_id: dict[str, int] = {}
         for special_token in self.special_tokens:
             token_bytes = special_token.encode("utf-8")

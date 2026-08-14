@@ -26,9 +26,9 @@ and the environment will be automatically solved and activated when necessary.
 uv run pytest
 ```
 
-Initially, all tests should fail with `NotImplementedError`s.
-To connect your implementation to the tests, complete the
-functions in [./tests/adapters.py](./tests/adapters.py).
+The implementation in this repository is connected through
+[tests/adapters.py](./tests/adapters.py). The full suite covers tokenizer training and encoding,
+the Transformer, optimizer utilities, checkpointing, and a small end-to-end training pipeline.
 
 ### Download data
 Download the TinyStories data and a subsample of OpenWebText
@@ -48,3 +48,125 @@ gunzip owt_valid.txt.gz
 cd ..
 ```
 
+## End-to-end workflow
+
+All commands below run through the project CLI. Paths are examples and can be changed.
+
+### 1. Train the TinyStories tokenizer
+
+```sh
+uv run python -m cs336_basics.cli train-bpe \
+  --input data/TinyStoriesV2-GPT4-train.txt \
+  --vocab-size 10000 \
+  --special-token '<|endoftext|>' \
+  --vocab-out artifacts/tinystories_vocab.pkl \
+  --merges-out artifacts/tinystories_merges.pkl \
+  --stats-out artifacts/tinystories_bpe_stats.json
+```
+
+For large corpora, BPE pre-tokenization automatically uses up to eight CPU processes. The stats JSON
+records elapsed time, process peak RSS, merge count, and the longest learned token.
+
+### 2. Tokenize the training and validation corpora
+
+The output is a raw `uint16` array plus a JSON metadata sidecar. The training code memory-maps
+these files instead of loading the full tokenized corpus into RAM.
+
+```sh
+uv run python -m cs336_basics.cli tokenize \
+  --input data/TinyStoriesV2-GPT4-train.txt \
+  --output data/tinystories_train.bin \
+  --vocab artifacts/tinystories_vocab.pkl \
+  --merges artifacts/tinystories_merges.pkl \
+  --special-token '<|endoftext|>'
+
+uv run python -m cs336_basics.cli tokenize \
+  --input data/TinyStoriesV2-GPT4-valid.txt \
+  --output data/tinystories_valid.bin \
+  --vocab artifacts/tinystories_vocab.pkl \
+  --merges artifacts/tinystories_merges.pkl \
+  --special-token '<|endoftext|>'
+```
+
+Measure the tokenizer's compression ratio on any corpus with:
+
+```sh
+uv run python -m cs336_basics.cli tokenizer-stats \
+  --input data/TinyStoriesV2-GPT4-valid.txt \
+  --vocab artifacts/tinystories_vocab.pkl \
+  --merges artifacts/tinystories_merges.pkl \
+  --special-token '<|endoftext|>' \
+  --output artifacts/tinystories_compression.json
+```
+
+### 3. Train on CPU
+
+The defaults use the assignment's 17M-parameter architecture and low-resource training budget:
+batch size 32, context length 256, and 5,000 steps (about 41M tokens). Metrics are written to
+`metrics.csv`; the configuration and latest checkpoint are saved in the run directory.
+
+```sh
+uv run python -m cs336_basics.cli train \
+  --train-data data/tinystories_train.bin \
+  --validation-data data/tinystories_valid.bin \
+  --output-dir runs/tinystories_cpu \
+  --device cpu \
+  --compile
+```
+
+Resume an interrupted run by passing the existing checkpoint. Keep the model arguments identical and
+set `--train-max-steps` to the desired final step.
+
+```sh
+uv run python -m cs336_basics.cli train \
+  --train-data data/tinystories_train.bin \
+  --validation-data data/tinystories_valid.bin \
+  --output-dir runs/tinystories_cpu \
+  --device cpu \
+  --resume-from runs/tinystories_cpu/checkpoint.pt
+```
+
+For quick debugging, reduce `--model-d-model`, `--model-num-layers`,
+`--model-context-length`, and `--train-max-steps`.
+
+The architecture ablations from the handout are available as model arguments:
+
+| Experiment | Arguments |
+|---|---|
+| Remove RMSNorm | `--model-norm-style none` |
+| Post-norm | `--model-norm-style post` |
+| NoPE | `--model-use-rope false` |
+| SiLU FFN | `--model-ffn-type silu --model-d-ff 2048` |
+
+Use a separate output directory for every run so their checkpoints and loss curves remain comparable.
+
+### 4. Generate text
+
+```sh
+uv run python -m cs336_basics.cli generate \
+  --checkpoint runs/tinystories_cpu/checkpoint.pt \
+  --config runs/tinystories_cpu/config.json \
+  --vocab artifacts/tinystories_vocab.pkl \
+  --merges artifacts/tinystories_merges.pkl \
+  --special-token '<|endoftext|>' \
+  --prompt 'Once upon a time' \
+  --max-new-tokens 256 \
+  --temperature 0.8 \
+  --top-p 0.9
+```
+
+Run `uv run python -m cs336_basics.cli <command> --help` for every configurable option.
+
+### 5. Plot learning curves
+
+Pass `--metrics` more than once to compare runs. Use `--x-axis elapsed_seconds` for the leaderboard's
+wall-clock plot.
+
+```sh
+uv run python -m cs336_basics.cli plot \
+  --metrics runs/tinystories_cpu/metrics.csv \
+  --metrics runs/tinystories_nope/metrics.csv \
+  --output runs/tinystories_comparison.svg \
+  --split validation \
+  --x-axis iteration
+```

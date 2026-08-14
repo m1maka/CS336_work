@@ -27,6 +27,8 @@ class RotaryPositionalEmbedding(nn.Module):
         )
         positions = torch.arange(max_seq_len, device=device, dtype=torch.float32)
         angles = positions[:, None] * frequencies[None, :]
+        self.cos: Tensor
+        self.sin: Tensor
         self.register_buffer("cos", torch.cos(angles), persistent=False)
         self.register_buffer("sin", torch.sin(angles), persistent=False)
 

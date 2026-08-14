@@ -23,6 +23,9 @@ class TransformerLM(nn.Module):
         rope_theta: float,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
+        norm_style: str = "pre",
+        use_rope: bool = True,
+        ffn_type: str = "swiglu",
     ) -> None:
         super().__init__()
         if context_length <= 0 or num_layers <= 0:
@@ -42,11 +45,14 @@ class TransformerLM(nn.Module):
                     theta=rope_theta,
                     device=device,
                     dtype=dtype,
+                    norm_style=norm_style,
+                    use_rope=use_rope,
+                    ffn_type=ffn_type,
                 )
                 for _ in range(num_layers)
             ]
         )
-        self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
+        self.ln_final = RMSNorm(d_model, device=device, dtype=dtype) if norm_style != "none" else None
         self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)
 
     def forward(self, token_ids: Tensor) -> Tensor:
@@ -61,4 +67,6 @@ class TransformerLM(nn.Module):
         x = self.token_embeddings(token_ids)
         for layer in self.layers:
             x = layer(x, positions)
-        return self.lm_head(self.ln_final(x))
+        if self.ln_final is not None:
+            x = self.ln_final(x)
+        return self.lm_head(x)
